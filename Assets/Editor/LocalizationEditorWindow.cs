@@ -212,7 +212,7 @@ public class LocalizationEditorWindow : EditorWindow {
         }
 
         var text   = File.ReadAllText(path);
-        var tokens = new List<Token>();
+        var tokens = new List<Locale.Token>();
         var error  = Tokenize(text, tokens);
 
         Entries.Clear();
@@ -220,11 +220,11 @@ public class LocalizationEditorWindow : EditorWindow {
         for(var i = 0; i < tokens.Count; ++i) {
             var token = tokens[i];
             switch(token.Type) {
-                case TokenType.String : {
-                    Assert(tokens[i - 1].Type == TokenType.Separator, $"Unexpected token. {token.Type}, while expecting {TokenType.Separator}");
+                case Locale.TokenType.String : {
+                    Assert(tokens[i - 1].Type == Locale.TokenType.Separator, $"Unexpected token. {token.Type}, while expecting {Locale.TokenType.Separator}");
 
                     // Ident : String
-                    if (tokens[i-2].Type == TokenType.Ident) {
+                    if (tokens[i-2].Type == Locale.TokenType.Ident) {
                         var entry = new LocaleEntry();
 
                         entry.Text    = token.String;
@@ -232,19 +232,19 @@ public class LocalizationEditorWindow : EditorWindow {
                         entry.Ident   = tokens[i-2].Ident;
                         entry.Comment = "";
 
-                        if (tokens[i-3].Type == TokenType.SingleCommentary ||
-                            tokens[i-3].Type == TokenType.MultiCommentary) {
+                        if (tokens[i-3].Type == Locale.TokenType.SingleCommentary ||
+                            tokens[i-3].Type == Locale.TokenType.MultiCommentary) {
                             entry.Comment = tokens[i-3].String;
                         }
 
                         Entries.Add(entry);
                     } else {
                         // Ident : Tag : String
-                        Assert(tokens[i - 2].Type == TokenType.Tag, $"Unexpected token. {token.Type}, while expecting {TokenType.Tag}");
+                        Assert(tokens[i - 2].Type == Locale.TokenType.Tag, $"Unexpected token. {token.Type}, while expecting {Locale.TokenType.Tag}");
 
-                        Assert(tokens[i - 3].Type == TokenType.Separator, $"Unexpected token. {token.Type}, while expecting {TokenType.Separator}");
+                        Assert(tokens[i - 3].Type == Locale.TokenType.Separator, $"Unexpected token. {token.Type}, while expecting {Locale.TokenType.Separator}");
 
-                        Assert(tokens[i - 4].Type == TokenType.Ident, $"Unexpected token. {token.Type}, while expecting {TokenType.Ident}");
+                        Assert(tokens[i - 4].Type == Locale.TokenType.Ident, $"Unexpected token. {token.Type}, while expecting {Locale.TokenType.Ident}");
 
                         var entry = new LocaleEntry();
 
@@ -253,8 +253,8 @@ public class LocalizationEditorWindow : EditorWindow {
                         entry.Ident   = tokens[i-4].Ident;
                         entry.Comment = "";
 
-                        if (tokens[i-5].Type == TokenType.SingleCommentary ||
-                            tokens[i-5].Type == TokenType.MultiCommentary) {
+                        if (tokens[i-5].Type == Locale.TokenType.SingleCommentary ||
+                            tokens[i-5].Type == Locale.TokenType.MultiCommentary) {
                             entry.Comment = tokens[i-5].String;
                         }
 

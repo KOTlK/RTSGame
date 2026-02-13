@@ -2,6 +2,7 @@ using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
 using Reflex.Attributes;
+using Mirror;
 
 // Unity can't serialize 64 bit flags... What a joke.
 [Flags]
@@ -11,7 +12,7 @@ public enum EntityFlags : uint {
     Temp            = 0x2, // Replace it with new flag. Do not remove it, because Unity will fuck everything up.
 }
 
-public class Entity : MonoBehaviour {
+public class Entity : NetworkBehaviour {
     [ReadOnly] public string        AssetAddress;
                public EntityFlags   Flags;
                public EntityType    Type;

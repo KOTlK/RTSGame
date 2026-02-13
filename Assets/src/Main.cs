@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.LowLevel;
 using UnityEngine.PlayerLoop;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using Reflex.Core;
 using Reflex.Enums;
@@ -89,6 +90,18 @@ public static class Main {
         builder.RegisterType(typeof(Game), 
                              Lifetime.Singleton, 
                              Reflex.Enums.Resolution.Eager);
+        builder.RegisterType(typeof(ConfigLiveReloadSystem),
+                             Lifetime.Singleton,
+                             Reflex.Enums.Resolution.Eager);
+        builder.RegisterType(typeof(KeyboardMouseInputSystem),
+                             Lifetime.Singleton,
+                             Reflex.Enums.Resolution.Eager);
+        builder.RegisterType(typeof(GameStateSystem),
+                             Lifetime.Singleton,
+                             Reflex.Enums.Resolution.Eager);
+        builder.RegisterType(typeof(CameraSystem),
+                             Lifetime.Singleton,
+                             Reflex.Enums.Resolution.Eager);
         builder.RegisterType(typeof(EntitiesUpdateSystem),
                              Lifetime.Singleton,
                              Reflex.Enums.Resolution.Eager);
@@ -96,6 +109,15 @@ public static class Main {
                              Lifetime.Singleton,
                              Reflex.Enums.Resolution.Eager);
         builder.RegisterType(typeof(QuitGameSystem),
+                             Lifetime.Singleton,
+                             Reflex.Enums.Resolution.Eager);
+        builder.RegisterType(typeof(LevelSystem),
+                             Lifetime.Singleton,
+                             Reflex.Enums.Resolution.Eager);
+        builder.RegisterType(typeof(TerrainSystem),
+                             Lifetime.Singleton,
+                             Reflex.Enums.Resolution.Eager);
+        builder.RegisterType(typeof(TestSystem),
                              Lifetime.Singleton,
                              Reflex.Enums.Resolution.Eager);
     }

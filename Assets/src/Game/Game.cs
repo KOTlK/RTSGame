@@ -31,6 +31,9 @@ public class Game {
 		var type = system.GetType();
 
 		_systemByType.Add(type, system);
+		if (system.Enabled) {
+			system.OnEnable();
+		}
 	}
 
 	public T GetSystem<T>() 

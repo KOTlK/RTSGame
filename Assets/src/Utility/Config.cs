@@ -2,84 +2,53 @@ using System.IO;
 using System;
 using System.Text;
 using System.Reflection;
-using System.Collections.Generic;
 using UnityEngine;
 
-/*
-    Config example, config file example: Assets/StreamingAssets/Config.cfg
-
-Structs are categories
-
-public struct Volume {
-    public float Music;
-    public float Sound;
-    public float Voice;
-}
-
-public static class Vars {
-    public static bool   IsInvinsible;
-    public static Volume Volume;
-
-    ...
-}
-*/
-
-public enum ConfigTokenType : ushort {
-    Comment    = ';',
-    LSqbracket = '[',
-    RSqbracket = ']',
-    Value      = 257,
-    Ident      = 258,
-    // There are no tokens for text or vectors, it's all just value
-}
-
-public struct ConfigToken {
-    public ConfigTokenType  Type;
-    public string           Ident;
-    public string           Comment;
-    public string           Value;
-}
+using static Assertions;
 
 [UnityEngine.Scripting.Preserve]
 public static class Config {
     // Data here
-
-    public static List<ConfigToken> Tokens;
+    public static string StartLevel;
+    public static float  CameraSpeed;
+    public static float  CameraScrollSpeed;
+    public static float  CameraSensitivity;
+    public static float  CameraMaxAngle;
+    public static float  CameraMinAngle;
+    public static float  CameraHorizontalRotationButtonSpeed;
+    public static float  CameraVerticalRotationButtonSpeed;
 
     private static StringBuilder sb;
 
-    private static string Path = $"{Application.streamingAssetsPath}/Config.cfg";
+    public static string Path = $"{Application.streamingAssetsPath}/Config.cfg";
 
     public static void ParseVars() {
-        Tokens = new();
-        Tokens.Clear();
 
         if(!File.Exists(Path)) {
             Debug.LogError($"Config file does not exist. Path: {Path}");
             return;
         }
 
-        var text = File.ReadAllText(Path);
+        var text  = File.ReadAllText(Path);
+        var lexer = new Lexer(text);
 
-        Tokenize(text);
+        object currentCategory     = null;
+        var    currentCategoryName = "";
+        var    fields              = typeof(Config).GetFields();
+        var    thisFields          = typeof(Config).GetFields();
 
-        object      currentCategory     = null;
-        var         currentCategoryName = "";
-        var         fields              = typeof(Config).GetFields();
-        var         thisFields          = typeof(Config).GetFields();
+        var token = lexer.EatToken();
 
-        for(var i = 0; i < Tokens.Count; ++i) {
-            var token = Tokens[i];
-
+        while(token.Type != (ushort)TokenType.EndOfFile) {
             switch(token.Type) {
-                case ConfigTokenType.RSqbracket : {
-                    if(Tokens[i - 1].Type != ConfigTokenType.Ident ||
-                       Tokens[i - 2].Type != ConfigTokenType.LSqbracket) {
-                        Debug.LogError($"Unexpected token.{Tokens[i - 1].Type} while waiting {ConfigTokenType.Ident}");
-                        return;
-                    }
+                case '[' : {
+                    var next     = lexer.PeekToken();
+                    var nextNext = lexer.PeekToken(2);
 
-                    var category = Tokens[i-1].Ident;
+                    Assert(next.Type == (ushort)TokenType.Ident, "Unexpected token. Expected %. Got %.", TokenType.Ident, (TokenType)next.Type);
+                    Assert(nextNext.Type == ']', "Unexpected token. Expected %. Got %.", ']', (TokenType)next.Type);
+
+                    var category = next.Value.Str;
 
                     if(currentCategory != null) {
                         foreach(var field in thisFields) {
@@ -102,28 +71,37 @@ public static class Config {
                     foreach(var field in thisFields) {
                         if(field.FieldType.ToString() == category) {
                             currentCategory = field.GetValue(null);
-                            fields = flds;
+                            fields          = flds;
                             break;
                         }
                     }
+
+                    lexer.EatToken(); // eat ident
+                    lexer.EatToken(); // eat bracket
                 } break;
-                case ConfigTokenType.Value : {
-                    if(Tokens[i - 1].Type != ConfigTokenType.Ident) {
-                        Debug.LogError($"Unexpected token.{Tokens[i - 1].Type} while waiting {ConfigTokenType.Ident}");
-                        return;
+                case (ushort)TokenType.Ident : {
+                    var name     = token.Value.Str;
+                    var next     = lexer.PeekToken();
+                    var negative = false;
+
+                    if (next.Type == '-') {
+                        negative = true;
+                        lexer.EatToken(); // eat '-'
                     }
 
-                    var name  = Tokens[i - 1].Ident;
-                    var value = Tokens[i].Value;
+                    token = lexer.EatToken();
 
                     foreach(var field in fields) {
-                        if(field.Name == name) {
-                            SetValueByType(field, currentCategory, value);
+                        if (field.Name == name) {
+                            SetValueByType(field, currentCategory, token, lexer, negative);
                             break;
                         }
                     }
+
                 } break;
             }
+
+            token = lexer.EatToken();
         }
 
         // If the category was set, apply changes
@@ -137,121 +115,119 @@ public static class Config {
         }
     }
 
-    private static void SetValueByType(FieldInfo field, object instance, string value) {
+    private static void SetValueByType(FieldInfo field, object instance, Token currentToken, Lexer lexer, bool negative) {
         //if you need more types, add more cases and implement parsing for it
         switch(field.FieldType.ToString()) {
             case "System.String" : {
-                field.SetValue(instance, value);
+                UnexpectedToken(currentToken, (ushort)TokenType.String);
+                field.SetValue(instance, currentToken.Value.Str);
             } break;
             case "System.Boolean" : {
-                if(value.ToLower() == "true") {
+                UnexpectedToken(currentToken, (ushort)TokenType.String);
+                if (currentToken.Value.Str.ToLower() == "true") {
                     field.SetValue(instance, true);
-                }else if(value.ToLower() == "false") {
+                } else if (currentToken.Value.Str.ToLower() == "false") {
                     field.SetValue(instance, false);
                 }
             } break;
             case "System.Single" : {
-                field.SetValue(instance, Single.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.FloatLiteral);
+                var val = negative ?-(float)currentToken.Value.FPoint : 
+                                     (float)currentToken.Value.FPoint;
+                field.SetValue(instance, val);
             } break;
             case "System.Double" : {
-                field.SetValue(instance, Double.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.FloatLiteral);
+                var val = negative ? -currentToken.Value.FPoint : 
+                                      currentToken.Value.FPoint;
+                field.SetValue(instance, val);
             } break;
             case "System.Int32" : {
-                field.SetValue(instance, Int32.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = negative ? -(int)currentToken.Value.Integer : 
+                                      (int)currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "System.UInt32" : {
-                field.SetValue(instance, UInt32.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = (uint)currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "System.Int64" : {
-                field.SetValue(instance, Int64.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = negative ? -(long)currentToken.Value.Integer : 
+                                      (long)currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "System.UInt64" : {
-                field.SetValue(instance, UInt64.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "System.Int16" : {
-                field.SetValue(instance, Int16.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = negative ? -(short)currentToken.Value.Integer : 
+                                      (short)currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "System.UInt16" : {
-                field.SetValue(instance, UInt16.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = (ushort)currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "System.SByte" : {
-                field.SetValue(instance, SByte.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = negative ? -(sbyte)currentToken.Value.Integer : 
+                                      (sbyte)currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "System.Byte" : {
-                field.SetValue(instance, Byte.Parse(value));
+                UnexpectedToken(currentToken, (ushort)TokenType.IntLiteral);
+                var val = (byte)currentToken.Value.Integer;
+                field.SetValue(instance, val);
             } break;
             case "UnityEngine.Vector2" : {
-                var vec   = Vector2.zero;
-                var coord = 0;
+                UnexpectedToken(currentToken, '(');
+                currentToken = lexer.EatToken();
+                var x = ParseFloat(currentToken, lexer);
+                UnexpectedToken(lexer.EatToken(), ',');
+                var y = ParseFloat(lexer.EatToken(), lexer);
+                UnexpectedToken(lexer.EatToken(), ')');
+                var vec = new Vector2(x, y);
 
-                sb.Clear();
-                for(var i = 0; i < value.Length; ++i) {
-                    switch(value[i]) {
-                        case ' ' : break;
-                        case '(' : break;
-                        case ',' : {
-                            vec[coord++] = float.Parse(sb.ToString());
-                            sb.Clear();
-                        } break;
-                        case ')' : {
-                            vec[coord] = float.Parse(sb.ToString());
-                            sb.Clear();
-                        } break;
-                        default : {
-                            sb.Append(value[i]);
-                        } break;
-                    }
-                }
+                if (negative) vec = -vec;
 
                 field.SetValue(instance, vec);
             } break;
             case "UnityEngine.Vector3" : {
-                var vec   = Vector3.zero;
-                var coord = 0;
+                UnexpectedToken(currentToken, '(');
+                currentToken = lexer.EatToken();
+                var x = ParseFloat(currentToken, lexer);
+                UnexpectedToken(lexer.EatToken(), ',');
+                var y = ParseFloat(lexer.EatToken(), lexer);
+                UnexpectedToken(lexer.EatToken(), ',');
+                var z = ParseFloat(lexer.EatToken(), lexer);
+                UnexpectedToken(lexer.EatToken(), ')');
+                var vec = new Vector3(x, y, z);
 
-                sb.Clear();
-                for(var i = 0; i < value.Length; ++i) {
-                    switch(value[i]) {
-                        case ' ' : break;
-                        case '(' : break;
-                        case ',' : {
-                            vec[coord++] = float.Parse(sb.ToString());
-                            sb.Clear();
-                        } break;
-                        case ')' : {
-                            vec[coord] = float.Parse(sb.ToString());
-                            sb.Clear();
-                        } break;
-                        default : {
-                            sb.Append(value[i]);
-                        } break;
-                    }
-                }
+                if (negative) vec = -vec;
 
                 field.SetValue(instance, vec);
             } break;
             case "UnityEngine.Vector4" : {
-                var vec   = Vector4.zero;
-                var coord = 0;
+                UnexpectedToken(currentToken, '(');
+                currentToken = lexer.EatToken();
+                var x = ParseFloat(currentToken, lexer);
+                UnexpectedToken(lexer.EatToken(), ',');
+                var y = ParseFloat(lexer.EatToken(), lexer);
+                UnexpectedToken(lexer.EatToken(), ',');
+                var z = ParseFloat(lexer.EatToken(), lexer);
+                UnexpectedToken(lexer.EatToken(), ',');
+                var w = ParseFloat(lexer.EatToken(), lexer);
+                UnexpectedToken(lexer.EatToken(), ')');
+                var vec = new Vector4(x, y, z, w);
 
-                sb.Clear();
-                for(var i = 0; i < value.Length; ++i) {
-                    switch(value[i]) {
-                        case ' ' : break;
-                        case '(' : break;
-                        case ',' : {
-                            vec[coord++] = float.Parse(sb.ToString());
-                            sb.Clear();
-                        } break;
-                        case ')' : {
-                            vec[coord] = float.Parse(sb.ToString());
-                            sb.Clear();
-                        } break;
-                        default : {
-                            sb.Append(value[i]);
-                        } break;
-                    }
-                }
+                if (negative) vec = -vec;
 
                 field.SetValue(instance, vec);
             } break;
@@ -261,125 +237,28 @@ public static class Config {
         }
     }
 
-    private static void Tokenize(string text) {
-        Tokens = new();
-        sb     = new();
-        Tokens.Clear();
-        sb.Clear();
+    private static void UnexpectedToken(Token token, ushort expected) {
+        Assert(token.Type == (ushort)expected, "Unexpected token at: %:%. Expected %. Got %.",
+            token.Line, 
+            token.Column, 
+            (TokenType)token.Type, 
+            (TokenType)token.Type);
+    }
 
-        var len = text.Length;
-
-        for(var i = 0; i < len; ++i) {
-            var c = text[i];
-
-            switch(c) {
-                case '\r' : break;
-                case '"'  : {
-                    i++;
-
-                    for (; i < len; ++i) {
-                        if (text[i] == '"' && text[i-1] != '\\') {
-                            break;
-                        }
-
-                        if (text[i] == '\\' &&
-                            text[i + 1] == 'n') {
-                            sb.Append('\n');
-                            i++;
-                            continue;
-                        }
-
-                        sb.Append(text[i]);
-                    }
-                } break;
-                case '(' : {
-                    for(; i < len; ++i) {
-                        if(text[i] == ')') {
-                            sb.Append(text[i]);
-                            break;
-                        }
-
-                        sb.Append(text[i]);
-                    }
-                } break;
-                case '\n' : {
-                    var last = Tokens[Tokens.Count - 1];
-                    if(last.Type == ConfigTokenType.Comment ||
-                       last.Type == ConfigTokenType.RSqbracket ||
-                       text[i - 1] == '\n') break;
-
-                    var token = new ConfigToken();
-
-                    token.Type  = ConfigTokenType.Value;
-                    token.Value = sb.ToString();
-
-                    Tokens.Add(token);
-                    sb.Clear();
-                } break;
-                case '\t' :
-                case ' '  : {
-                    if(text[i + 1] == ' ' ||
-                       text[i + 1] == '\t') {
-                       break;
-                    }
-                    var token = new ConfigToken();
-
-                    token.Type  = ConfigTokenType.Ident;
-                    token.Ident = sb.ToString();
-
-                    Tokens.Add(token);
-                    sb.Clear();
-                } break;
-                case '['  : {
-                    var token = new ConfigToken();
-                    token.Type = ConfigTokenType.LSqbracket;
-
-                    Tokens.Add(token);
-                } break;
-                case ']' : {
-                    var token = new ConfigToken();
-
-                    token.Type  = ConfigTokenType.Ident;
-                    token.Ident = sb.ToString();
-                    sb.Clear();
-
-                    Tokens.Add(token);
-
-                    token = new();
-
-                    token.Type = ConfigTokenType.RSqbracket;
-
-                    Tokens.Add(token);
-                } break;
-                case ';' : {
-                    sb.Clear();
-                    i++;
-                    for(; i < len; i++) {
-                        if(text[i] == '\n') break;
-                        sb.Append(text[i]);
-                    }
-
-                    var token = new ConfigToken();
-
-                    token.Type    = ConfigTokenType.Comment;
-                    token.Comment = sb.ToString();
-
-                    Tokens.Add(token);
-                    sb.Clear();
-                } break;
-                default : {
-                    sb.Append(c);
-                } break;
-            }
+    // parse float, leave current token at FloatLiteral
+    private static float ParseFloat(Token token, Lexer lexer) {
+        var negative = false;
+        if (token.Type == '-') {
+            negative = true;
+            token    = lexer.EatToken();
         }
 
-        if(sb.Length > 0) {
-            var token = new ConfigToken();
+        UnexpectedToken(token, (ushort)TokenType.FloatLiteral);
 
-            token.Type  = ConfigTokenType.Value;
-            token.Value = sb.ToString();
+        var f = (float)token.Value.FPoint;
 
-            Tokens.Add(token);
-        }
+        if (negative) f = -f;
+
+        return f;
     }
 }
